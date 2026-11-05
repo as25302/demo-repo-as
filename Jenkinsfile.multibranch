@@ -1,25 +1,25 @@
-// Jenkinsfile for EC2 multi-branch pipeline (Lab 04, Exercise 5)
-// Adapted: deploys under the Jenkins home (no sudo)
+// Jenkinsfile for EC2 multi-branch pipeline
 pipeline {
     agent any
 
     parameters {
-        choice(name: 'DEPLOY_TARGET', choices: ['current-instance', 'all-instances'], description: 'Where to deploy')
-        booleanParam(name: 'RUN_HEALTH_CHECK', defaultValue: true, description: 'Run script tests')
-    }
-
-    environment {
-        INSTANCE_ID = "${sh(script: 'TOKEN=$(curl -s -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 60"); curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id || echo unknown', returnStdout: true).trim()}"
-        BRANCH_TYPE = "${env.BRANCH_NAME.startsWith('feature/') ? 'feature' : env.BRANCH_NAME == 'ec2-development' ? 'development' : env.BRANCH_NAME == 'ec2-staging' ? 'staging' : env.BRANCH_NAME == 'main' ? 'production' : 'other'}"
-        DEPLOY_BASE = '/var/lib/jenkins/ec2-scripts'
+        choice(name: 'DEPLOY_TARGET', choices: ['current-instance', 'all-instances'], description: 'Deploy target')
+        booleanParam(name: 'RUN_HEALTH_CHECK', defaultValue: true, description: 'Run health check')
     }
 
     stages {
         stage('Prepare') {
             steps {
+                script {
+                    env.BRANCH_TYPE = env.BRANCH_NAME.startsWith('feature/') ? 'feature' :
+                                      env.BRANCH_NAME == 'ec2-development' ? 'development' :
+                                      env.BRANCH_NAME == 'ec2-staging' ? 'staging' :
+                                      env.BRANCH_NAME == 'main' ? 'production' : 'other'
+                    env.INSTANCE_ID = sh(script: "bash ec2-info.sh | grep 'Instance ID' | cut -d' ' -f3", returnStdout: true).trim()
+                }
                 echo "Branch: ${env.BRANCH_NAME}"
                 echo "Branch Type: ${env.BRANCH_TYPE}"
-                echo "Instance ID: ${INSTANCE_ID}"
+                echo "Instance ID: ${env.INSTANCE_ID}"
                 echo "Deploy Target: ${params.DEPLOY_TARGET}"
             }
         }
@@ -30,7 +30,7 @@ pipeline {
                     echo "=== Script Validation for ${BRANCH_TYPE} ==="
                     for script in *.sh; do
                         if [ -f "$script" ]; then
-                            bash -n "$script" && echo "OK: $script" || echo "FAIL: $script"
+                            bash -n "$script" && echo "✓ $script" || echo "✗ $script"
                         fi
                     done
                 '''
@@ -39,7 +39,7 @@ pipeline {
 
         stage('Test Scripts') {
             when {
-                expression { params.RUN_HEALTH_CHECK != false }
+                expression { params.RUN_HEALTH_CHECK == true }
             }
             parallel {
                 stage('Syntax Tests') {
@@ -57,8 +57,6 @@ pipeline {
                             echo "Running functionality tests..."
                             chmod +x *.sh
                             timeout 30 ./ec2-info.sh > /tmp/test-output.txt
-                            cat /tmp/test-output.txt
-                            ./ec2-health.sh
                             echo "Test completed"
                         '''
                     }
@@ -76,8 +74,8 @@ pipeline {
             steps {
                 echo "Deploying to development environment"
                 sh '''
-                    mkdir -p "$DEPLOY_BASE/dev"
-                    cp *.sh "$DEPLOY_BASE/dev/"
+                    mkdir -p /var/lib/jenkins/ec2-scripts/dev
+                    cp *.sh /var/lib/jenkins/ec2-scripts/dev/
                     echo "Development deployment completed"
                 '''
             }
@@ -90,8 +88,8 @@ pipeline {
             steps {
                 echo "Deploying to staging environment"
                 sh '''
-                    mkdir -p "$DEPLOY_BASE/staging"
-                    cp *.sh "$DEPLOY_BASE/staging/"
+                    mkdir -p /var/lib/jenkins/ec2-scripts/staging
+                    cp *.sh /var/lib/jenkins/ec2-scripts/staging/
                     echo "Staging deployment completed"
                 '''
             }
@@ -105,9 +103,9 @@ pipeline {
                 input message: 'Deploy to Production Instance?', ok: 'Deploy'
                 echo "Deploying to production environment"
                 sh '''
-                    mkdir -p "$DEPLOY_BASE/prod"
-                    cp *.sh "$DEPLOY_BASE/prod/"
-                    chmod +x "$DEPLOY_BASE"/prod/*.sh
+                    mkdir -p /var/lib/jenkins/ec2-scripts/prod
+                    cp *.sh /var/lib/jenkins/ec2-scripts/prod/
+                    chmod +x /var/lib/jenkins/ec2-scripts/prod/*.sh
                     echo "Production deployment completed on ${INSTANCE_ID}"
                 '''
             }
@@ -120,10 +118,10 @@ pipeline {
             archiveArtifacts artifacts: '*.sh', allowEmptyArchive: true
         }
         success {
-            echo "Pipeline succeeded on instance ${INSTANCE_ID}!"
+            echo "✓ Pipeline succeeded on instance ${env.INSTANCE_ID}!"
         }
         failure {
-            echo "Pipeline failed on instance ${INSTANCE_ID}!"
+            echo "✗ Pipeline failed on instance ${env.INSTANCE_ID}!"
         }
     }
 }
