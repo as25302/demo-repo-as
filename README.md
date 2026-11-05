@@ -1,2 +1,2 @@
 # demo-repo-as
-Lab work for git huv
+Lab work for git hu
