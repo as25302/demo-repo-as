@@ -1,12 +1,10 @@
-// Jenkinsfile for DevOps Scripts (Lab 04, Exercise 4)
-// Adapted: scripts live at the repo root, deploy dir is under the Jenkins home
+// Jenkinsfile for DevOps Scripts
 pipeline {
     agent any
 
     environment {
         SERVER_REGION = 'eu-west-1'
         BUILD_ENV = 'development'
-        DEPLOY_DIR = '/var/lib/jenkins/bootcamp-labs/scripts'
     }
 
     stages {
@@ -26,7 +24,7 @@ pipeline {
                     for script in *.sh; do
                         if [ -f "$script" ]; then
                             echo "Checking syntax: $script"
-                            bash -n "$script" && echo "OK: $script syntax valid"
+                            bash -n "$script" && echo "✓ $script syntax OK"
                         fi
                     done
                 '''
@@ -40,11 +38,6 @@ pipeline {
                     echo "=== Testing Scripts ==="
                     chmod +x *.sh
 
-                    if [ -f "system-info.sh" ]; then
-                        echo "Testing system info script..."
-                        ./system-info.sh
-                    fi
-
                     if [ -f "health-check.sh" ]; then
                         echo "Testing health check script..."
                         ./health-check.sh
@@ -55,17 +48,17 @@ pipeline {
 
         stage('Deploy Scripts') {
             when {
-                expression { env.GIT_BRANCH == null || env.GIT_BRANCH.endsWith('main') }
+                expression { env.GIT_BRANCH == 'origin/main' }
             }
             steps {
-                echo "Deploying scripts to ${DEPLOY_DIR}"
+                echo "Deploying scripts to /var/lib/jenkins/bootcamp-labs"
                 sh '''
                     echo "=== Deploying Bootcamp Scripts ==="
-                    mkdir -p "$DEPLOY_DIR"
-                    cp *.sh "$DEPLOY_DIR"/
-                    chmod +x "$DEPLOY_DIR"/*.sh
+                    mkdir -p /var/lib/jenkins/bootcamp-labs/scripts
+                    cp *.sh /var/lib/jenkins/bootcamp-labs/scripts/
+                    chmod +x /var/lib/jenkins/bootcamp-labs/scripts/*.sh
                     echo "Deployment completed successfully"
-                    ls -la "$DEPLOY_DIR"
+                    ls -la /var/lib/jenkins/bootcamp-labs/scripts/
                 '''
             }
         }
