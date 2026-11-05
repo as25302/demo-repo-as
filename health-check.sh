@@ -1,18 +1,17 @@
 #!/bin/bash
-# Simple server health check for Jenkins lab
+# health check for jenkins lab
 echo "=== Health Check: $(hostname) ==="
-echo "Date: $(date)"
+date
 echo
-echo "--- Uptime ---"
+echo "Uptime:"
 uptime
 echo
-echo "--- Disk usage ---"
+echo "Disk:"
 df -h /
 echo
-echo "--- Memory ---"
+echo "Memory:"
 free -h
 echo
-echo "--- Jenkins service ---"
-systemctl is-active jenkins || echo "jenkins service not active"
-echo
+echo "Jenkins service:"
+systemctl is-active jenkins
 echo "=== Health Check Completed ==="
