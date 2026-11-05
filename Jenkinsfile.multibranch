@@ -1,0 +1,130 @@
+// Jenkinsfile for EC2 multi-branch pipeline (Lab 04, Exercise 5)
+// Adapted: uses health-check.sh from the repo root, deploys under the Jenkins home (no sudo)
+pipeline {
+    agent any
+
+    parameters {
+        choice(name: 'DEPLOY_TARGET', choices: ['current-instance', 'all-instances'], description: 'Where to deploy')
+        booleanParam(name: 'RUN_HEALTH_CHECK', defaultValue: true, description: 'Run script tests')
+    }
+
+    environment {
+        INSTANCE_ID = "${sh(script: 'TOKEN=$(curl -s -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 60"); curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id || echo unknown', returnStdout: true).trim()}"
+        BRANCH_TYPE = "${env.BRANCH_NAME.startsWith('feature/') ? 'feature' :
+                       env.BRANCH_NAME == 'ec2-development' ? 'development' :
+                       env.BRANCH_NAME == 'ec2-staging' ? 'staging' :
+                       env.BRANCH_NAME == 'main' ? 'production' : 'other'}"
+        DEPLOY_BASE = '/var/lib/jenkins/ec2-scripts'
+    }
+
+    stages {
+        stage('Prepare') {
+            steps {
+                echo "Branch: ${env.BRANCH_NAME}"
+                echo "Branch Type: ${env.BRANCH_TYPE}"
+                echo "Instance ID: ${INSTANCE_ID}"
+                echo "Deploy Target: ${params.DEPLOY_TARGET}"
+            }
+        }
+
+        stage('Validate Scripts') {
+            steps {
+                sh '''
+                    echo "=== Script Validation for ${BRANCH_TYPE} ==="
+                    for script in *.sh; do
+                        if [ -f "$script" ]; then
+                            bash -n "$script" && echo "OK: $script" || echo "FAIL: $script"
+                        fi
+                    done
+                '''
+            }
+        }
+
+        stage('Test Scripts') {
+            when {
+                expression { params.RUN_HEALTH_CHECK != false }
+            }
+            parallel {
+                stage('Syntax Tests') {
+                    steps {
+                        sh '''
+                            echo "Running syntax tests..."
+                            bash -n health-check.sh && echo "health-check.sh syntax OK"
+                        '''
+                    }
+                }
+                stage('Functionality Tests') {
+                    steps {
+                        sh '''
+                            echo "Running functionality tests..."
+                            chmod +x *.sh
+                            timeout 30 ./health-check.sh > /tmp/test-output.txt
+                            cat /tmp/test-output.txt
+                            echo "Test completed"
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to Development') {
+            when {
+                anyOf {
+                    branch 'ec2-development'
+                    branch 'feature/*'
+                }
+            }
+            steps {
+                echo "Deploying to development environment"
+                sh '''
+                    mkdir -p "$DEPLOY_BASE/dev"
+                    cp *.sh "$DEPLOY_BASE/dev/"
+                    echo "Development deployment completed"
+                '''
+            }
+        }
+
+        stage('Deploy to Staging') {
+            when {
+                branch 'ec2-staging'
+            }
+            steps {
+                echo "Deploying to staging environment"
+                sh '''
+                    mkdir -p "$DEPLOY_BASE/staging"
+                    cp *.sh "$DEPLOY_BASE/staging/"
+                    echo "Staging deployment completed"
+                '''
+            }
+        }
+
+        stage('Deploy to Production') {
+            when {
+                branch 'main'
+            }
+            steps {
+                input message: 'Deploy to Production Instance?', ok: 'Deploy'
+                echo "Deploying to production environment"
+                sh '''
+                    mkdir -p "$DEPLOY_BASE/prod"
+                    cp *.sh "$DEPLOY_BASE/prod/"
+                    chmod +x "$DEPLOY_BASE"/prod/*.sh
+                    echo "Production deployment completed on ${INSTANCE_ID}"
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "EC2 Pipeline completed for branch: ${env.BRANCH_NAME}"
+            archiveArtifacts artifacts: '*.sh', allowEmptyArchive: true
+        }
+        success {
+            echo "Pipeline succeeded on instance ${INSTANCE_ID}!"
+        }
+        failure {
+            echo "Pipeline failed on instance ${INSTANCE_ID}!"
+        }
+    }
+}
