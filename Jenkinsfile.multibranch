@@ -10,10 +10,7 @@ pipeline {
 
     environment {
         INSTANCE_ID = "${sh(script: 'TOKEN=$(curl -s -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 60"); curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id || echo unknown', returnStdout: true).trim()}"
-        BRANCH_TYPE = "${env.BRANCH_NAME.startsWith('feature/') ? 'feature' :
-                       env.BRANCH_NAME == 'ec2-development' ? 'development' :
-                       env.BRANCH_NAME == 'ec2-staging' ? 'staging' :
-                       env.BRANCH_NAME == 'main' ? 'production' : 'other'}"
+        BRANCH_TYPE = "${env.BRANCH_NAME.startsWith('feature/') ? 'feature' : env.BRANCH_NAME == 'ec2-development' ? 'development' : env.BRANCH_NAME == 'ec2-staging' ? 'staging' : env.BRANCH_NAME == 'main' ? 'production' : 'other'}"
         DEPLOY_BASE = '/var/lib/jenkins/ec2-scripts'
     }
 
