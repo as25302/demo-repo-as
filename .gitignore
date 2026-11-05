@@ -1,0 +1,4 @@
+*.log
+temp/
+config.json
+.DS_Store
