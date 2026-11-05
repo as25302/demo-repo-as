@@ -1,5 +1,5 @@
 // Jenkinsfile for EC2 multi-branch pipeline (Lab 04, Exercise 5)
-// Adapted: uses health-check.sh from the repo root, deploys under the Jenkins home (no sudo)
+// Adapted: deploys under the Jenkins home (no sudo)
 pipeline {
     agent any
 
@@ -46,7 +46,8 @@ pipeline {
                     steps {
                         sh '''
                             echo "Running syntax tests..."
-                            bash -n health-check.sh && echo "health-check.sh syntax OK"
+                            bash -n ec2-info.sh && echo "ec2-info.sh syntax OK"
+                            bash -n ec2-health.sh && echo "ec2-health.sh syntax OK"
                         '''
                     }
                 }
@@ -55,8 +56,9 @@ pipeline {
                         sh '''
                             echo "Running functionality tests..."
                             chmod +x *.sh
-                            timeout 30 ./health-check.sh > /tmp/test-output.txt
+                            timeout 30 ./ec2-info.sh > /tmp/test-output.txt
                             cat /tmp/test-output.txt
+                            ./ec2-health.sh
                             echo "Test completed"
                         '''
                     }
